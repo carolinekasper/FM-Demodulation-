@@ -1,0 +1,94 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import hilbert
+
+# Define parameters
+fs = 1e6  # Sampling frequency (1 MHz)
+duration = 0.01  # Duration of the signal (10 ms)
+fm = 1e3  # Frequency of the modulating signal (1 kHz)
+fc = 100e3  # Carrier frequency (100 kHz)
+deviation = 5e3  # Frequency deviation (5 kHz)
+
+time = np.arange(0, duration, 1/fs)  # Time array
+
+# Create modulating signal (sine wave)
+modulating_signal = np.sin(2 * np.pi * fm * time)
+
+# Create FM signal
+integral_of_message = np.cumsum(modulating_signal) / fs
+fm_signal = np.cos(2 * np.pi * fc * time + 2 * np.pi * deviation * integral_of_message)
+
+# Double buffering simulation
+def double_buffer_processing(signal, buffer_size):
+    input_ping = np.zeros(buffer_size)
+    input_pong = np.zeros(buffer_size)
+    output_ping = np.zeros(buffer_size)
+    output_pong = np.zeros(buffer_size)
+
+    buffer_switch = True  # Start with ping buffer
+    processed_signal = []
+
+    for i in range(0, len(signal), buffer_size):
+        chunk = signal[i:i + buffer_size]
+        if len(chunk) < buffer_size:
+            chunk = np.pad(chunk, (0, buffer_size - len(chunk)), 'constant')
+
+        if buffer_switch:
+            input_ping[:] = chunk
+            processed_chunk = process_buffer(input_ping)
+            output_ping[:] = processed_chunk
+            processed_signal.extend(output_ping)
+        else:
+            input_pong[:] = chunk
+            processed_chunk = process_buffer(input_pong)
+            output_pong[:] = processed_chunk
+            processed_signal.extend(output_pong)
+
+        buffer_switch = not buffer_switch
+
+    return np.array(processed_signal)
+
+# Process a single buffer
+def process_buffer(buffer):
+    # Perform FM demodulation on the buffer
+    analytic_signal = hilbert(buffer)
+    instantaneous_phase = np.unwrap(np.angle(analytic_signal))
+    instantaneous_frequency = np.diff(instantaneous_phase, prepend=0) * (fs / (2.0 * np.pi))
+    demodulated_signal = instantaneous_frequency - fc
+    return demodulated_signal
+
+# Simulate the double buffer processing
+demodulated_signal = double_buffer_processing(fm_signal, buffer_size=1024)
+
+# Plot the results
+plt.figure(figsize=(12, 8))
+
+# Original modulating signal
+plt.subplot(3, 1, 1)
+plt.plot(time, modulating_signal, label="Modulating Signal")
+plt.title("Modulating Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Amplitude")
+plt.grid()
+plt.legend()
+
+# FM Signal
+plt.subplot(3, 1, 2)
+plt.plot(time, fm_signal, label="FM Signal")
+plt.title("FM Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Amplitude")
+plt.grid()
+plt.legend()
+
+# Demodulated Signal
+plt.subplot(3, 1, 3)
+plt.plot(time, demodulated_signal[:len(time)], label="Demodulated Signal")
+plt.title("Demodulated Signal")
+plt.xlabel("Time (s)")
+plt.ylabel("Amplitude")
+plt.grid()
+plt.legend()
+
+plt.tight_layout()
+plt.show()
